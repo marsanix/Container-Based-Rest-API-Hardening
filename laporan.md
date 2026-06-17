@@ -1,28 +1,29 @@
 # Hardening Keamanan Transmisi Data REST API Berbasis Docker Container Menggunakan TLS 1.3 Berpola Cipher Suite AES-128-GCM Terhadap Serangan Adversary-in-the-Middle
 
-Mata Kuliah: Network Programming & Administration  
-Kelas: IFN41  
+Mata Kuliah: Network Programming & Administration
+Kelas: IFN41
 
 Kelompok 5:
+
 - Marsani (230401010282)
 - Muhammad Saifulloh (220401010207)
 - Kristian Hananiel Hura (220401010289)
 - Sukandar (240401020175)
 
-Dosen Pengajar: Abdul Azzam Ajhari, S.Kom., M.Kom  
-Program Studi: PJJ INFORMATIKA  
-Kampus: UNIVERSITAS SIBER ASIA  
-Tahun: 2026  
+Dosen Pengajar: Abdul Azzam Ajhari, S.Kom., M.Kom
+Program Studi: PJJ INFORMATIKA
+Kampus: UNIVERSITAS SIBER ASIA
+Tahun: 2026
 
 ## 1. Pendahuluan
 
 ### 1.1 Latar Belakang
 
-Arsitektur layanan berbasis REST API telah menjadi fondasi utama dalam pengembangan aplikasi modern, khususnya dalam arsitektur *microservices*. Komunikasi antar-layanan dalam arsitektur tersebut bergantung pada protokol HTTP sebagai medium transmisi data. Namun, HTTP secara inheren tidak menyediakan mekanisme enkripsi pada layer transport, sehingga seluruh data yang ditransmisikan—termasuk kredensial autentikasi, token otorisasi, dan payload sensitif—dapat diintersepsi oleh pihak ketiga melalui teknik *network sniffing*.
+Sebagaimana yang telah umum diketahui bahwa arsitektur layanan berbasis REST API telah menjadi fondasi utama dalam pengembangan aplikasi modern, termasuk pada arsitektur *microservices*. Komunikasi antar-layanan dalam arsitektur tersebut bergantung pada protokol HTTP sebagai medium transmisi data. Namun, HTTP secara inheren tidak menyediakan mekanisme enkripsi pada layer transport, sehingga seluruh data yang ditransmisikan, termasuk kredensial autentikasi, token otorisasi, dan payload sensitif, dapat diintersepsi oleh pihak ketiga melalui teknik *network sniffing*.
 
-Serangan *Adversary-in-the-Middle* (AitM), yang sebelumnya dikenal sebagai *Man-in-the-Middle* (MITM), merupakan salah satu vektor ancaman utama terhadap transmisi data yang tidak terenkripsi. Pada serangan ini, aktor ancaman memposisikan dirinya di antara dua entitas komunikasi untuk menyadap, memodifikasi, atau menginjeksi data tanpa sepengetahuan kedua pihak. Framework MITRE ATT&CK mengkategorikan teknik ini sebagai *Network Sniffing* (T1557.001) di bawah taktik *Credential Access* dan *Collection*. Secara paralel, OWASP Top 10:2025 mengklasifikasikan kegagalan dalam mengamankan transmisi data sebagai bagian dari kategori A02:2025—*Cryptographic Failures*.
+Serangan *Adversary-in-the-Middle* (AitM), atau yang sebelumnya dikenal sebagai *Man-in-the-Middle* (MITM), merupakan salah satu vektor ancaman utama terhadap transmisi data yang tidak terenkripsi. Pada serangan ini, aktor ancaman (*threat actor*) memposisikan dirinya di tengah-tengah antara dua entitas komunikasi untuk menyadap, memodifikasi, atau menginjeksi data tanpa sepengetahuan kedua pihak. Framework MITRE ATT&CK mengkategorikan teknik ini sebagai *Network Sniffing* (T1557.001) di bawah taktik *Credential Access* dan *Collection*. Secara paralel, OWASP Top 10:2025 juga mengklasifikasikan kegagalan dalam mengamankan transmisi data sebagai bagian dari kategori A02:2025—*Cryptographic Failures*.
 
-Penerapan HTTPS melalui protokol TLS merupakan langkah mitigasi standar terhadap ancaman tersebut. Akan tetapi, tidak semua implementasi TLS memberikan tingkat keamanan yang setara. Versi TLS yang lebih lama (TLS 1.0, 1.1, dan sebagian konfigurasi TLS 1.2) masih rentan terhadap serangan *downgrade*, *padding oracle*, dan eksploitasi *cipher suite* yang lemah seperti RC4, DES, atau CBC-mode tanpa mekanisme *Authenticated Encryption*. TLS 1.3, yang diratifikasi melalui RFC 8446 pada Agustus 2018, mengeliminasi seluruh *cipher suite* dan mekanisme *key exchange* yang dianggap tidak aman, serta menyederhanakan proses *handshake* dari dua *round-trip* menjadi satu.
+Penerapan HTTPS melalui protokol TLS merupakan langkah mitigasi standar terhadap ancaman tersebut. Namun, tidak semua implementasi TLS dapat memberikan tingkat keamanan yang setara. Versi TLS yang lebih lama (TLS 1.0, 1.1, dan sebagian konfigurasi TLS 1.2) masih berpeluang rentan terhadap serangan *downgrade*, *padding oracle*, dan eksploitasi *cipher suite* yang lemah seperti RC4, DES, atau CBC-mode tanpa mekanisme *Authenticated Encryption*. Adapun TLS 1.3, yang diratifikasi melalui RFC 8446 pada Agustus 2018, mengeliminasi seluruh *cipher suite* dan mekanisme *key exchange* yang dianggap tidak aman, serta menyederhanakan proses *handshake* dari dua *round-trip* menjadi satu.
 
 Dalam konteks *containerized deployment*, penggunaan Docker sebagai platform orkestrasi layanan menambahkan dimensi baru pada perimeter keamanan. Komunikasi antar-container dalam jaringan Docker internal secara default tidak terenkripsi, sehingga aktor ancaman yang berhasil mengakses jaringan internal Docker dapat melakukan intersepsi data secara langsung. Oleh karena itu, diperlukan arsitektur keamanan yang menempatkan *reverse proxy* sebagai titik terminasi TLS (*TLS termination point*) untuk memastikan seluruh komunikasi eksternal melewati kanal terenkripsi.
 
@@ -31,27 +32,25 @@ Penelitian ini mengusulkan arsitektur *hardening* keamanan transmisi data REST A
 ### 1.2 Rumusan Masalah
 
 Berdasarkan latar belakang yang telah diuraikan, rumusan masalah dalam penelitian ini adalah sebagai berikut:
-
-1. Bagaimana arsitektur keamanan berbasis TLS 1.3 dengan *cipher suite* AES-128-GCM dapat diimplementasikan pada transmisi data REST API dalam ekosistem Docker container menggunakan Nginx *reverse proxy*?
-2. Bagaimana efektivitas konfigurasi tersebut dalam mencegah serangan *Adversary-in-the-Middle* berupa *network sniffing*, jika dibandingkan dengan kondisi tanpa enkripsi (baseline HTTP)?
+1. Bagaimana arsitektur keamanan Defense in Depth berlapis TLS 1.3 (Data in Transit) dan enkripsi tingkat aplikasi AES-128-GCM (Data at Rest) dapat diimplementasikan pada aplikasi CRUD REST API dalam ekosistem Docker container?
+2. Bagaimana efektivitas konfigurasi tersebut dalam mencegah serangan Adversary-in-the-Middle berupa network sniffing dan melindungi kerahasiaan data dari insiden pasca-kebocoran (post-breach) pada sisi database?
 3. Bagaimana pemetaan hasil pengujian terhadap framework MITRE ATT&CK (T1557.001) dan OWASP Top 10:2025 (A02:2025) untuk memvalidasi mitigasi yang diterapkan?
 
 ### 1.3 Tujuan Penelitian
 
 Tujuan dari penelitian ini meliputi:
-
-1. Merancang dan mengimplementasikan arsitektur keamanan transmisi data REST API berbasis Docker container yang terdiri dari tiga komponen: container *client*, container *backend API*, dan container Nginx *reverse proxy* dengan terminasi TLS 1.3.
-2. Menguji efektivitas konfigurasi TLS 1.3 berpola *cipher suite* AES-128-GCM dalam mencegah intersepsi data melalui teknik *network sniffing* menggunakan Wireshark.
+1. Merancang dan mengimplementasikan arsitektur keamanan berlapis (Defense in Depth) pada aplikasi CRUD REST API berbasis Docker container yang mencakup Frontend Web, Backend API (Python), MySQL Database, dan Nginx reverse proxy (TLS 1.3).
+2. Menguji efektivitas pengamanan lapis ganda (TLS 1.3 untuk Data in Transit dan AES-128-GCM untuk Data at Rest) dalam mencegah intersepsi data melalui teknik network sniffing menggunakan Wireshark maupun eksfiltrasi langsung pada tingkat database.
 3. Memetakan hasil pengujian ke dalam framework MITRE ATT&CK dan OWASP Top 10:2025 sebagai bentuk validasi terhadap standar keamanan industri.
 
 ### 1.4 Batasan Masalah
 
 Penelitian ini membatasi ruang lingkupnya pada aspek-aspek berikut:
-
-1. Pengujian dilakukan dalam lingkungan lokal (*localhost*) menggunakan Docker Desktop, bukan pada infrastruktur *cloud* atau jaringan produksi.
-2. Sertifikat TLS yang digunakan bersifat *self-signed*, yang memadai untuk keperluan pengujian namun tidak merepresentasikan skenario *Certificate Authority* (CA) publik.
-3. Fokus pengujian terbatas pada serangan *network sniffing* (T1557.001) dan tidak mencakup vektor serangan lain seperti *SSL stripping*, *certificate pinning bypass*, atau *side-channel attack*.
-4. *Backend API* menggunakan framework Python (Flask atau FastAPI) dengan endpoint sederhana untuk keperluan demonstrasi transmisi data sensitif.
+1. Pengujian dan simulasi arsitektur microservices dilakukan secara terisolasi di dalam lingkungan jaringan virtual Docker (*Docker Custom Bridge Network*) berskala *single-node*, bukan didistribusikan pada kluster infrastruktur *cloud* (seperti Kubernetes) atau lingkungan produksi nyata.
+2. Sertifikat TLS yang digunakan bersifat self-signed, yang memadai untuk keperluan pengujian namun tidak merepresentasikan skenario Certificate Authority (CA) publik.
+3. Fokus pengujian ancaman terbatas pada serangan network sniffing (T1557.001) dan tidak mencakup vektor serangan aktif seperti SSL stripping, SQL Injection, atau side-channel attack.
+4. Backend API menggunakan framework Python (Flask) dan MySQL Database yang difokuskan pada fungsionalitas CRUD data karyawan untuk mendemonstrasikan enkripsi tingkat aplikasi.
+5. Pengujian Data at Rest difokuskan pada simulasi mitigasi pasca-kompromi dengan memverifikasi ciphertext secara langsung di level database.
 
 ### 1.5 Manfaat Penelitian
 
@@ -82,14 +81,14 @@ Keterbatasan yang teridentifikasi: Serupa dengan jurnal referensi pertama, penel
 
 Penelitian ini mengambil posisi sebagai kelanjutan dan perbaikan dari kedua jurnal referensi di atas. Jika kedua penelitian sebelumnya berfokus pada identifikasi dan demonstrasi kerentanan (*offensive perspective*), penelitian ini bergerak ke arah mitigasi aktif dan validasi (*defensive perspective*). Secara spesifik, kontribusi yang membedakan penelitian ini dari penelitian sebelumnya adalah:
 
-| Aspek | Permana & Ramadhan (2021) | Darmawan et al. (2024) | Penelitian Ini |
-|---|---|---|---|
-| Fokus Utama | Identifikasi kerentanan HTTP | Demonstrasi sniffing jaringan | Hardening & validasi mitigasi |
-| Solusi yang Ditawarkan | Rekomendasi enkripsi (generik) | Tidak ada solusi eksplisit | TLS 1.3 + AES-128-GCM (spesifik) |
-| Implementasi | Tidak ada | Tidak ada | Docker + Nginx reverse proxy |
-| Pemetaan Framework | Tidak ada | Tidak ada | MITRE ATT&CK + OWASP Top 10:2025 |
-| Pengujian Pasca-Mitigasi | Tidak ada | Tidak ada | Wireshark (before-after comparison) |
-| Arsitektur Deployment | Tidak dibahas | Tidak dibahas | 3-tier container (client, API, proxy) |
+| Aspek                    | Permana & Ramadhan (2021)      | Darmawan et al. (2024)        | Penelitian Ini                        |
+| ------------------------ | ------------------------------ | ----------------------------- | ------------------------------------- |
+| Fokus Utama              | Identifikasi kerentanan HTTP   | Demonstrasi sniffing jaringan | Hardening & validasi mitigasi         |
+| Solusi yang Ditawarkan   | Rekomendasi enkripsi (generik) | Tidak ada solusi eksplisit    | TLS 1.3 + AES-128-GCM (spesifik)      |
+| Implementasi             | Tidak ada                      | Tidak ada                     | Docker + Nginx reverse proxy          |
+| Pemetaan Framework       | Tidak ada                      | Tidak ada                     | MITRE ATT&CK + OWASP Top 10:2025      |
+| Pengujian Pasca-Mitigasi | Tidak ada                      | Tidak ada                     | Wireshark (before-after comparison)   |
+| Arsitektur Deployment    | Tidak dibahas                  | Tidak dibahas                 | 3-tier container (client, API, proxy) |
 
 ### 2.2 Landasan Teori
 
@@ -150,25 +149,25 @@ Penelitian ini menggunakan pendekatan eksperimental kuantitatif dengan metode *b
 
 #### 3.2.1 Perangkat Keras
 
-| Komponen | Spesifikasi |
-|---|---|
-| Prosesor | Minimum Intel Core i5 / AMD Ryzen 5 (atau setara) |
-| RAM | Minimum 8 GB |
-| Penyimpanan | Minimum 20 GB ruang kosong |
-| Jaringan | Loopback interface (localhost) |
+| Komponen    | Spesifikasi                                       |
+| ----------- | ------------------------------------------------- |
+| Prosesor    | Minimum Intel Core i5 / AMD Ryzen 5 (atau setara) |
+| RAM         | Minimum 8 GB                                      |
+| Penyimpanan | Minimum 20 GB ruang kosong                        |
+| Jaringan    | Loopback interface (localhost)                    |
 
 #### 3.2.2 Perangkat Lunak
 
-| Perangkat Lunak | Versi | Fungsi |
-|---|---|---|
-| Docker Desktop | ≥ 4.x | Platform container runtime |
-| Docker Compose | ≥ 2.x | Orkestrasi multi-container |
-| Nginx | ≥ 1.25.x | Reverse proxy dengan TLS termination |
-| Python | ≥ 3.10 | Runtime backend API |
-| Flask / FastAPI | Flask ≥ 3.x atau FastAPI ≥ 0.100 | Framework backend REST API |
-| OpenSSL | ≥ 3.0 | Pembuatan self-signed certificate |
-| Wireshark | ≥ 4.x | Packet analyzer untuk pengujian |
-| cURL | ≥ 8.x | HTTP client untuk pengiriman request |
+| Perangkat Lunak | Versi                              | Fungsi                               |
+| --------------- | ---------------------------------- | ------------------------------------ |
+| Docker Desktop  | ≥ 4.x                             | Platform container runtime           |
+| Docker Compose  | ≥ 2.x                             | Orkestrasi multi-container           |
+| Nginx           | ≥ 1.25.x                          | Reverse proxy dengan TLS termination |
+| Python          | ≥ 3.10                            | Runtime backend API                  |
+| Flask / FastAPI | Flask ≥ 3.x atau FastAPI ≥ 0.100 | Framework backend REST API           |
+| OpenSSL         | ≥ 3.0                             | Pembuatan self-signed certificate    |
+| Wireshark       | ≥ 4.x                             | Packet analyzer untuk pengujian      |
+| cURL            | ≥ 8.x                             | HTTP client untuk pengiriman request |
 
 ### 3.3 Arsitektur Sistem
 
@@ -207,6 +206,7 @@ Arsitektur yang dirancang terdiri dari tiga container Docker yang saling terhubu
 ```
 
 Alur komunikasi dan Simulasi (Microservices & True MITM):
+
 1. Seluruh container (termasuk *Client Victim* dan *Attacker*) beroperasi secara terisolasi di dalam jaringan internal `secure-net` yang menggunakan alokasi IP Statis Kelas A (`10.10.10.0/24`). Host machine tidak dapat mengakses API secara langsung melainkan melalui interface *WebTop*.
 2. Serangan ARP Spoofing: Container *Attacker* (`10.10.10.50`) menjalankan `arpspoof` untuk meracuni *ARP Cache* dari *Client* dan *Proxy*. Hal ini mengecoh *switch* virtual Docker sehingga semua paket jaringan antara *Client* dan *Proxy* berbelok melewati *Attacker* terlebih dahulu (*Adversary-in-the-Middle*).
 3. Pengguna mengakses kontainer *Client Victim* di port `3000`. Dari dalam *browser* kontainer tersebut, Client mengirim HTTPS request. Paket ini ditangkap oleh *Attacker*, lalu diteruskan secara transparan ke Nginx reverse proxy (`10.10.10.10`).
@@ -335,6 +335,7 @@ server {
 ```
 
 Penjelasan konfigurasi kritis:
+
 - `ssl_protocols TLSv1.3;` — menolak seluruh koneksi yang menggunakan TLS 1.2 atau lebih rendah.
 - `ssl_ciphers TLS_AES_128_GCM_SHA256;` — membatasi *cipher suite* hanya pada AES-128-GCM, menolak AES-256-GCM dan ChaCha20-Poly1305.
 - `return 301 https://...` — memastikan tidak ada koneksi HTTP yang diterima tanpa *redirect* ke HTTPS.
@@ -387,6 +388,7 @@ networks:
 ```
 
 Aspek keamanan pada konfigurasi Docker Compose:
+
 - Container `backend` hanya menggunakan `expose` (bukan `ports`), sehingga port 5000 tidak dapat diakses dari luar jaringan Docker.
 - Hanya container `nginx-proxy` yang memetakan port ke *host machine*, memastikan seluruh akses eksternal melewati TLS termination point.
 - Kedua container terhubung melalui *custom bridge network* `secure-net` yang terisolasi dari jaringan Docker default.
@@ -424,6 +426,7 @@ openssl s_client -connect localhost:443 -tls1_2 2>/dev/null | grep "alert"
 ### 3.5 Prosedur Pengujian
 
 Sebelum mengeksekusi skenario serangan, langkah pra-pengujian (*Sanity Check*) dilakukan untuk memastikan bahwa seluruh *container* telah berjalan dan mendapatkan IP Address yang sesuai dengan rancangan topologi. Verifikasi IP dilakukan dengan mengeksekusi perintah `hostname -I` (atau sejenisnya) dari terminal *host* ke dalam masing-masing *container*:
+
 1. Nginx Reverse Proxy (`docker exec nginx-proxy hostname -I`): `10.10.10.10`
 2. Backend API (`docker exec backend-api hostname -I`): `10.10.10.20`
 3. Frontend Web UI (`docker exec frontend-web hostname -I`): `10.10.10.30`
@@ -453,13 +456,13 @@ Setelah topologi terverifikasi, pengujian dilanjutkan dalam dua skenario dengan 
 
 ### 3.6 Metrik Evaluasi
 
-| Metrik | Indikator Keberhasilan |
-|---|---|
+| Metrik                           | Indikator Keberhasilan                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
 | Visibilitas payload (Skenario A) | Kredensial (`username`, `password`) terlihat dalam *cleartext* pada Wireshark |
-| Visibilitas payload (Skenario B) | Kredensial tidak terlihat; hanya *encrypted application data* yang tampak |
-| Versi protokol TLS | Wireshark menampilkan `TLSv1.3` pada kolom *Protocol* |
-| Cipher suite | Handshake menunjukkan `TLS_AES_128_GCM_SHA256` |
-| Penolakan TLS lama | Koneksi TLS 1.2 dan lebih rendah menghasilkan *handshake failure* |
+| Visibilitas payload (Skenario B) | Kredensial tidak terlihat; hanya*encrypted application data* yang tampak          |
+| Versi protokol TLS               | Wireshark menampilkan `TLSv1.3` pada kolom *Protocol*                           |
+| Cipher suite                     | Handshake menunjukkan `TLS_AES_128_GCM_SHA256`                                    |
+| Penolakan TLS lama               | Koneksi TLS 1.2 dan lebih rendah menghasilkan*handshake failure*                  |
 
 ---
 
@@ -514,15 +517,15 @@ Hasil analisis terhadap *capture* paket menunjukkan:
 
 ### 4.4 Analisis Komparatif Before-After
 
-| Parameter Pengujian | Skenario A (HTTP) | Skenario B (TLS 1.3) |
-|---|---|---|
-| Protokol yang terdeteksi Wireshark | HTTP | TLSv1.3 |
-| Visibilitas username | Terlihat (*cleartext*) | Tidak terlihat (terenkripsi) |
-| Visibilitas password | Terlihat (*cleartext*) | Tidak terlihat (terenkripsi) |
-| Visibilitas response token | Terlihat (*cleartext*) | Tidak terlihat (terenkripsi) |
-| Follow Stream | TCP Stream: seluruh payload terbaca | TLS Stream: *encrypted data* |
-| Cipher suite | Tidak ada | TLS_AES_128_GCM_SHA256 |
-| Forward Secrecy | Tidak ada | ECDHE (wajib di TLS 1.3) |
+| Parameter Pengujian                | Skenario A (HTTP)                   | Skenario B (TLS 1.3)          |
+| ---------------------------------- | ----------------------------------- | ----------------------------- |
+| Protokol yang terdeteksi Wireshark | HTTP                                | TLSv1.3                       |
+| Visibilitas username               | Terlihat (*cleartext*)            | Tidak terlihat (terenkripsi)  |
+| Visibilitas password               | Terlihat (*cleartext*)            | Tidak terlihat (terenkripsi)  |
+| Visibilitas response token         | Terlihat (*cleartext*)            | Tidak terlihat (terenkripsi)  |
+| Follow Stream                      | TCP Stream: seluruh payload terbaca | TLS Stream:*encrypted data* |
+| Cipher suite                       | Tidak ada                           | TLS_AES_128_GCM_SHA256        |
+| Forward Secrecy                    | Tidak ada                           | ECDHE (wajib di TLS 1.3)      |
 
 Tabel di atas menunjukkan bahwa seluruh data sensitif yang sebelumnya terekspos pada Skenario A telah berhasil diproteksi pada Skenario B. Tidak ada satu pun informasi *plaintext* dari payload aplikasi yang dapat diekstraksi melalui Wireshark setelah *hardening* TLS 1.3 diterapkan.
 
@@ -530,29 +533,29 @@ Tabel di atas menunjukkan bahwa seluruh data sensitif yang sebelumnya terekspos 
 
 Pemetaan hasil pengujian terhadap framework MITRE ATT&CK disajikan dalam tabel berikut:
 
-| Komponen MITRE ATT&CK | Detail | Status Mitigasi |
-|---|---|---|
-| Taktik | Credential Access (TA0006), Collection (TA0009) | — |
-| Teknik | Adversary-in-the-Middle (T1557) | — |
-| Sub-teknik | Network Sniffing (T1557.001) | Berhasil dimitigasi |
-| Prosedur Simulasi | Sniffing kredensial REST API via Wireshark | Skenario A: berhasil; Skenario B: gagal (terenkripsi) |
-| Mitigasi yang Diterapkan | Encrypt Sensitive Information (M1042) | Diimplementasikan via TLS 1.3 + AES-128-GCM |
-| Validasi | Data yang ditransmisikan tidak dapat dibaca oleh *packet analyzer* pasca-mitigasi | Terkonfirmasi |
+| Komponen MITRE ATT&CK    | Detail                                                                             | Status Mitigasi                                       |
+| ------------------------ | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Taktik                   | Credential Access (TA0006), Collection (TA0009)                                    | —                                                    |
+| Teknik                   | Adversary-in-the-Middle (T1557)                                                    | —                                                    |
+| Sub-teknik               | Network Sniffing (T1557.001)                                                       | Berhasil dimitigasi                                   |
+| Prosedur Simulasi        | Sniffing kredensial REST API via Wireshark                                         | Skenario A: berhasil; Skenario B: gagal (terenkripsi) |
+| Mitigasi yang Diterapkan | Encrypt Sensitive Information (M1042)                                              | Diimplementasikan via TLS 1.3 + AES-128-GCM           |
+| Validasi                 | Data yang ditransmisikan tidak dapat dibaca oleh*packet analyzer* pasca-mitigasi | Terkonfirmasi                                         |
 
 Berdasarkan pemetaan di atas, implementasi TLS 1.3 dengan cipher suite AES-128-GCM secara langsung memenuhi rekomendasi mitigasi M1042 dari MITRE ATT&CK. Teknik serangan T1557.001 (*Network Sniffing*) yang pada Skenario A berhasil mengekstraksi kredensial, pada Skenario B hanya menghasilkan data terenkripsi yang tidak dapat diinterpretasikan tanpa *session key*.
 
 ### 4.6 Pemetaan Terhadap OWASP Top 10:2025
 
-| Komponen OWASP | Detail | Status |
-|---|---|---|
-| Kategori | A02:2025 — Cryptographic Failures | — |
-| Kerentanan yang Diuji | Transmisi data sensitif tanpa enkripsi (cleartext over HTTP) | Teridentifikasi pada Skenario A |
-| Solusi yang Diterapkan | Enkripsi transport layer menggunakan TLS 1.3 dengan cipher suite AES-128-GCM | Diimplementasikan pada Skenario B |
-| Kepatuhan Rekomendasi OWASP | | |
-| — Gunakan TLS terbaru | TLS 1.3 (RFC 8446) | Terpenuhi |
-| — Gunakan cipher suite kuat | TLS_AES_128_GCM_SHA256 (AEAD) | Terpenuhi |
-| — Terapkan HSTS | `Strict-Transport-Security` header aktif | Terpenuhi |
-| — Nonaktifkan koneksi HTTP | Redirect 301 HTTP → HTTPS | Terpenuhi |
+| Komponen OWASP               | Detail                                                                       | Status                            |
+| ---------------------------- | ---------------------------------------------------------------------------- | --------------------------------- |
+| Kategori                     | A02:2025 — Cryptographic Failures                                           | —                                |
+| Kerentanan yang Diuji        | Transmisi data sensitif tanpa enkripsi (cleartext over HTTP)                 | Teridentifikasi pada Skenario A   |
+| Solusi yang Diterapkan       | Enkripsi transport layer menggunakan TLS 1.3 dengan cipher suite AES-128-GCM | Diimplementasikan pada Skenario B |
+| Kepatuhan Rekomendasi OWASP  |                                                                              |                                   |
+| — Gunakan TLS terbaru       | TLS 1.3 (RFC 8446)                                                           | Terpenuhi                         |
+| — Gunakan cipher suite kuat | TLS_AES_128_GCM_SHA256 (AEAD)                                                | Terpenuhi                         |
+| — Terapkan HSTS             | `Strict-Transport-Security` header aktif                                   | Terpenuhi                         |
+| — Nonaktifkan koneksi HTTP  | Redirect 301 HTTP → HTTPS                                                   | Terpenuhi                         |
 
 Implementasi yang dilakukan pada penelitian ini memenuhi seluruh rekomendasi OWASP untuk mitigasi risiko A02:2025. Penggunaan TLS 1.3 secara eksklusif (tanpa *fallback* ke versi lebih rendah) dan pembatasan cipher suite ke AEAD-only menutup celah keamanan yang menjadi dasar klasifikasi *Cryptographic Failures* oleh OWASP.
 
@@ -560,13 +563,13 @@ Implementasi yang dilakukan pada penelitian ini memenuhi seluruh rekomendasi OWA
 
 Hasil pengujian dalam penelitian ini secara empiris menjawab gap yang ditinggalkan oleh kedua jurnal referensi:
 
-| Aspek | Permana & Ramadhan (2021) | Darmawan et al. (2024) | Penelitian Ini |
-|---|---|---|---|
-| Temuan utama | HTTP rentan terhadap sniffing | Jaringan rentan disadap | TLS 1.3 + AES-128-GCM efektif mencegah sniffing |
-| Tindak lanjut | Rekomendasi enkripsi (tanpa implementasi) | Tidak ada | Implementasi + pengujian + validasi |
-| Bukti mitigasi | Tidak ada | Tidak ada | Wireshark capture before-after |
-| Pemetaan standar | Tidak ada | Tidak ada | MITRE T1557.001 + OWASP A02:2025 |
-| Reproduktifitas | Terbatas (tidak ada kode) | Terbatas | Penuh (Docker Compose + konfigurasi lengkap) |
+| Aspek            | Permana & Ramadhan (2021)                 | Darmawan et al. (2024)  | Penelitian Ini                                  |
+| ---------------- | ----------------------------------------- | ----------------------- | ----------------------------------------------- |
+| Temuan utama     | HTTP rentan terhadap sniffing             | Jaringan rentan disadap | TLS 1.3 + AES-128-GCM efektif mencegah sniffing |
+| Tindak lanjut    | Rekomendasi enkripsi (tanpa implementasi) | Tidak ada               | Implementasi + pengujian + validasi             |
+| Bukti mitigasi   | Tidak ada                                 | Tidak ada               | Wireshark capture before-after                  |
+| Pemetaan standar | Tidak ada                                 | Tidak ada               | MITRE T1557.001 + OWASP A02:2025                |
+| Reproduktifitas  | Terbatas (tidak ada kode)                 | Terbatas                | Penuh (Docker Compose + konfigurasi lengkap)    |
 
 Penelitian ini membuktikan bahwa rekomendasi generik terkait enkripsi yang diajukan oleh penelitian sebelumnya memerlukan spesifikasi lebih lanjut agar efektif. Tidak cukup hanya mengaktifkan HTTPS; konfigurasi harus secara eksplisit membatasi versi TLS ke 1.3 dan memilih cipher suite AEAD untuk menutup seluruh vektor serangan pada layer transport.
 
@@ -579,9 +582,7 @@ Penelitian ini membuktikan bahwa rekomendasi generik terkait enkripsi yang diaju
 Berdasarkan hasil implementasi dan pengujian yang telah dilakukan, penelitian ini menghasilkan tiga kesimpulan utama yang menjawab rumusan masalah:
 
 1. Arsitektur keamanan berbasis TLS 1.3 berhasil diimplementasikan dalam ekosistem Docker *Microservices* yang memisahkan komponen Frontend, Backend API (Flask), Nginx *reverse proxy* sebagai TLS termination point, serta simulasi Client Victim (*WebTop Browser*). Konfigurasi Nginx secara restriktif membatasi protokol pada TLSv1.3 saja dengan cipher suite tunggal `TLS_AES_128_GCM_SHA256`, menolak seluruh koneksi yang menggunakan versi TLS lebih rendah.
-
 2. Efektivitas konfigurasi divalidasi secara langsung melalui skenario penyerangan *True MITM* (ARP Spoofing) menggunakan container *Attacker* mandiri berbasis Kali Linux. Pada skenario baseline (HTTP), seluruh kredensial autentikasi yang disadap dapat diintersepsi dalam format *cleartext* melalui Wireshark. Pada skenario pasca-hardening (TLS 1.3), Wireshark hanya menangkap *Encrypted Application Data* tanpa kemampuan untuk membaca payload. Hal ini menunjukkan bahwa konfigurasi TLS 1.3 dengan AES-128-GCM efektif mencegah serangan *network sniffing* meskipun lalu lintas jaringan telah sepenuhnya berbelok (terkompromi) di layer 2.
-
 3. Pemetaan terhadap framework standar industri mengonfirmasi bahwa implementasi yang dilakukan memenuhi rekomendasi mitigasi M1042 (*Encrypt Sensitive Information*) dari MITRE ATT&CK untuk mengatasi teknik T1557.001, serta memenuhi seluruh panduan mitigasi OWASP untuk risiko A02:2025 (*Cryptographic Failures*) termasuk penggunaan TLS terbaru, cipher suite kuat (AEAD), header HSTS, dan penolakan koneksi HTTP.
 
 ### 5.2 Future Work
@@ -589,15 +590,10 @@ Berdasarkan hasil implementasi dan pengujian yang telah dilakukan, penelitian in
 Penelitian ini memiliki beberapa potensi pengembangan untuk riset selanjutnya:
 
 1. Implementasi Mutual TLS (mTLS): Menambahkan autentikasi dua arah di mana backend API juga memverifikasi sertifikat client, sehingga tidak hanya koneksi yang terenkripsi tetapi juga identitas client yang terjamin. Pendekatan ini relevan untuk arsitektur *zero-trust* di mana setiap komunikasi *service-to-service* memerlukan verifikasi identitas.
-
 2. Pengujian pada jaringan multi-node: Penelitian ini terbatas pada lingkungan *localhost*. Pengujian lanjutan dapat dilakukan pada jaringan multi-node menggunakan Docker Swarm atau Kubernetes untuk mengevaluasi efektivitas TLS 1.3 pada skenario *inter-node communication* yang lebih realistis.
-
 3. Analisis performa (*performance benchmarking*): Mengukur *overhead* latensi dan *throughput* yang ditimbulkan oleh enkripsi TLS 1.3 dibandingkan dengan HTTP menggunakan *benchmarking tools* seperti Apache Benchmark (`ab`) atau `wrk`. Analisis ini penting untuk mengevaluasi *trade-off* antara keamanan dan kinerja pada beban produksi.
-
 4. Pengujian vektor serangan tambahan: Memperluas cakupan pengujian ke teknik MITRE ATT&CK lain yang relevan, seperti T1040 (*Network Sniffing* tanpa AitM), T1557.002 (*ARP Cache Poisoning*), atau pengujian terhadap serangan *SSL stripping* untuk memvalidasi efektivitas header HSTS.
-
 5. Integrasi Certificate Authority (CA) dan OCSP Stapling: Mengganti sertifikat *self-signed* dengan sertifikat dari CA publik (misalnya Let's Encrypt) dan mengaktifkan OCSP stapling pada Nginx untuk menyediakan mekanisme validasi revokasi sertifikat secara *real-time*.
-
 6. Automasi hardening menggunakan Infrastructure as Code (IaC): Mengembangkan template Ansible atau Terraform yang mengotomasi seluruh proses konfigurasi TLS hardening, sehingga dapat diterapkan secara konsisten pada lingkungan produksi berskala besar.
 
 ---
@@ -637,4 +633,3 @@ Penelitian ini memiliki beberapa potensi pengembangan untuk riset selanjutnya:
 [16] T. Dierks dan E. Rescorla, "The Transport Layer Security (TLS) Protocol Version 1.2," RFC 5246, Internet Engineering Task Force (IETF), Agustus 2008. [Daring]. Tersedia: https://datatracker.ietf.org/doc/html/rfc5246
 
 [17] B. Beurdouche et al., "A Messy State of the Union: Taming the Composite State Machines of TLS," dalam *Proceedings of the 2015 IEEE Symposium on Security and Privacy*, San Jose, CA, 2015, hlm. 535–552. [Daring]. Tersedia: https://doi.org/10.1109/SP.2015.39
-
