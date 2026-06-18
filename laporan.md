@@ -470,17 +470,9 @@ Setelah topologi terverifikasi, pengujian dilanjutkan dalam dua skenario dengan 
 
 ### 4.1 Hasil Implementasi Arsitektur
 
-Implementasi arsitektur tiga container berhasil dilakukan menggunakan Docker Compose. Verifikasi status container menunjukkan seluruh layanan berjalan dengan normal:
+Implementasi arsitektur enam container (Frontend, Backend, Proxy, Database, Client, Attacker) berhasil dilakukan menggunakan Docker Compose. Verifikasi status container menunjukkan seluruh layanan berjalan dengan normal:
 
-[INSERT SCREENSHOT OUTPUT `docker-compose ps` YANG MENUNJUKKAN KEDUA CONTAINER BERSTATUS "Up" DI SINI]
-
-Verifikasi koneksi TLS menggunakan `openssl s_client` mengonfirmasi bahwa Nginx reverse proxy telah dikonfigurasi dengan benar:
-
-[INSERT SCREENSHOT OUTPUT `openssl s_client -connect localhost:443 -tls1_3` YANG MENUNJUKKAN "Protocol: TLSv1.3" DAN "Cipher: TLS_AES_128_GCM_SHA256" DI SINI]
-
-Pengujian penolakan TLS 1.2 berhasil dilakukan:
-
-[INSERT SCREENSHOT OUTPUT `openssl s_client -connect localhost:443 -tls1_2` YANG MENUNJUKKAN "alert handshake failure" DI SINI]
+[INSERT SCREENSHOT OUTPUT `docker-compose ps` YANG MENUNJUKKAN KEENAM CONTAINER BERSTATUS "Up" DI SINI]
 
 ### 4.2 Hasil Pengujian Skenario A: Baseline HTTP
 
@@ -499,7 +491,15 @@ Kondisi ini merepresentasikan skenario ancaman yang dipetakan oleh MITRE ATT&CK 
 
 ### 4.3 Hasil Pengujian Skenario B: Pasca-Hardening TLS 1.3
 
-Pada skenario pasca-*hardening*, Wireshark menangkap paket TLS yang terenkripsi. Meskipun *handshake* TLS dapat diamati (Client Hello, Server Hello), payload aplikasi tidak dapat dibaca.
+Sebelum menganalisis tangkapan paket, verifikasi koneksi TLS menggunakan `openssl s_client` dilakukan untuk mengonfirmasi bahwa Nginx *reverse proxy* telah dikonfigurasi dengan benar sebagai *TLS termination point*:
+
+[INSERT SCREENSHOT OUTPUT `docker exec -it attacker sh -c "openssl s_client -connect 10.10.10.10:443 -tls1_3  2>/dev/null | grep -E 'Protocol|Cipher'"` YANG MENUNJUKKAN "Protocol: TLSv1.3" DAN "Cipher: TLS_AES_128_GCM_SHA256" DI SINI]
+
+Pengujian penolakan TLS 1.2 juga berhasil memblokir koneksi usang:
+
+[INSERT SCREENSHOT OUTPUT `docker exec -it attacker sh -c "openssl s_client -connect 10.10.10.10:443 -tls1_2  2>/dev/null | grep -E 'alert|reason'"` YANG MENUNJUKKAN "alert handshake failure" DI SINI]
+
+Selanjutnya pada pengujian transmisi data, Wireshark menangkap paket TLS yang terenkripsi. Meskipun *handshake* TLS dapat diamati (Client Hello, Server Hello), *payload* aplikasi tidak dapat dibaca.
 
 [INSERT SCREENSHOT WIRESHARK — CAPTURE PAKET TLS 1.3 HANDSHAKE (CLIENT HELLO, SERVER HELLO) DI SINI]
 
@@ -515,7 +515,15 @@ Hasil analisis terhadap *capture* paket menunjukkan:
 2. Application Data: Setelah *handshake* selesai, seluruh paket data selanjutnya ditampilkan sebagai `Application Data` dengan konten yang terenkripsi. Fitur *Follow TLS Stream* tidak dapat menampilkan *plaintext* karena Wireshark tidak memiliki akses ke *session key*.
 3. Perbandingan langsung: Jika pada Skenario A credential `"password":"rahasia123"` terlihat secara eksplisit, pada Skenario B konten yang sama ditransmisikan sebagai deretan byte terenkripsi yang tidak dapat diinterpretasikan.
 
-### 4.4 Analisis Komparatif Before-After
+### 4.4 Hasil Validasi Defense in Depth (Data at Rest)
+
+Mendemonstrasikan lapisan keamanan tingkat lanjut, pengujian dilakukan dengan memverifikasi secara langsung rekaman data yang tersimpan di dalam database MySQL. Skenario ini menyimulasikan kondisi terburuk di mana basis data berhasil diretas dan datanya dieksfiltrasi oleh penyerang (post-breach scenario).
+
+[INSERT SCREENSHOT OUTPUT QUERY MYSQL `SELECT * FROM employees;` DI SINI]
+
+Hasil query pada tabel `employees` menunjukkan bahwa kolom `salary_encrypted` tidak lagi menyimpan nilai nominal gaji secara cleartext, melainkan untaian string acak berupa Base64-encoded ciphertext. Hal ini membuktikan bahwa enkripsi tingkat aplikasi (Application-Level Encryption) menggunakan AES-128-GCM berhasil melindungi data saat istirahat (Data at Rest). Meskipun database terkompromi, kerahasiaan informasi sensitif tetap aman tanpa kunci dekripsi yang tersimpan terpisah di sisi Backend API.
+
+### 4.5 Analisis Komparatif Before-After
 
 | Parameter Pengujian                | Skenario A (HTTP)                   | Skenario B (TLS 1.3)          |
 | ---------------------------------- | ----------------------------------- | ----------------------------- |
@@ -529,7 +537,7 @@ Hasil analisis terhadap *capture* paket menunjukkan:
 
 Tabel di atas menunjukkan bahwa seluruh data sensitif yang sebelumnya terekspos pada Skenario A telah berhasil diproteksi pada Skenario B. Tidak ada satu pun informasi *plaintext* dari payload aplikasi yang dapat diekstraksi melalui Wireshark setelah *hardening* TLS 1.3 diterapkan.
 
-### 4.5 Pemetaan Terhadap MITRE ATT&CK
+### 4.6 Pemetaan Terhadap MITRE ATT&CK
 
 Pemetaan hasil pengujian terhadap framework MITRE ATT&CK disajikan dalam tabel berikut:
 
@@ -544,22 +552,23 @@ Pemetaan hasil pengujian terhadap framework MITRE ATT&CK disajikan dalam tabel b
 
 Berdasarkan pemetaan di atas, implementasi TLS 1.3 dengan cipher suite AES-128-GCM secara langsung memenuhi rekomendasi mitigasi M1042 dari MITRE ATT&CK. Teknik serangan T1557.001 (*Network Sniffing*) yang pada Skenario A berhasil mengekstraksi kredensial, pada Skenario B hanya menghasilkan data terenkripsi yang tidak dapat diinterpretasikan tanpa *session key*.
 
-### 4.6 Pemetaan Terhadap OWASP Top 10:2025
+### 4.7 Pemetaan Terhadap OWASP Top 10:2025
 
 | Komponen OWASP               | Detail                                                                       | Status                            |
 | ---------------------------- | ---------------------------------------------------------------------------- | --------------------------------- |
 | Kategori                     | A02:2025 — Cryptographic Failures                                           | —                                |
 | Kerentanan yang Diuji        | Transmisi data sensitif tanpa enkripsi (cleartext over HTTP)                 | Teridentifikasi pada Skenario A   |
-| Solusi yang Diterapkan       | Enkripsi transport layer menggunakan TLS 1.3 dengan cipher suite AES-128-GCM | Diimplementasikan pada Skenario B |
+| Solusi yang Diterapkan       | Enkripsi Transport Layer (TLS 1.3) dan Application-Level Encryption (AES-128-GCM) | Diimplementasikan secara komprehensif |
 | Kepatuhan Rekomendasi OWASP  |                                                                              |                                   |
 | — Gunakan TLS terbaru       | TLS 1.3 (RFC 8446)                                                           | Terpenuhi                         |
+| — Enkripsi Data at Rest     | Enkripsi kolom sensitif (Gaji) pada tingkat aplikasi sebelum masuk MySQL     | Terpenuhi                         |
 | — Gunakan cipher suite kuat | TLS_AES_128_GCM_SHA256 (AEAD)                                                | Terpenuhi                         |
 | — Terapkan HSTS             | `Strict-Transport-Security` header aktif                                   | Terpenuhi                         |
 | — Nonaktifkan koneksi HTTP  | Redirect 301 HTTP → HTTPS                                                   | Terpenuhi                         |
 
 Implementasi yang dilakukan pada penelitian ini memenuhi seluruh rekomendasi OWASP untuk mitigasi risiko A02:2025. Penggunaan TLS 1.3 secara eksklusif (tanpa *fallback* ke versi lebih rendah) dan pembatasan cipher suite ke AEAD-only menutup celah keamanan yang menjadi dasar klasifikasi *Cryptographic Failures* oleh OWASP.
 
-### 4.7 Perbandingan dengan Penelitian Sebelumnya
+### 4.8 Perbandingan dengan Penelitian Sebelumnya
 
 Hasil pengujian dalam penelitian ini secara empiris menjawab gap yang ditinggalkan oleh kedua jurnal referensi:
 
@@ -581,9 +590,9 @@ Penelitian ini membuktikan bahwa rekomendasi generik terkait enkripsi yang diaju
 
 Berdasarkan hasil implementasi dan pengujian yang telah dilakukan, penelitian ini menghasilkan tiga kesimpulan utama yang menjawab rumusan masalah:
 
-1. Arsitektur keamanan berbasis TLS 1.3 berhasil diimplementasikan dalam ekosistem Docker *Microservices* yang memisahkan komponen Frontend, Backend API (Flask), Nginx *reverse proxy* sebagai TLS termination point, serta simulasi Client Victim (*WebTop Browser*). Konfigurasi Nginx secara restriktif membatasi protokol pada TLSv1.3 saja dengan cipher suite tunggal `TLS_AES_128_GCM_SHA256`, menolak seluruh koneksi yang menggunakan versi TLS lebih rendah.
-2. Efektivitas konfigurasi divalidasi secara langsung melalui skenario penyerangan *True MITM* (ARP Spoofing) menggunakan container *Attacker* mandiri berbasis Kali Linux. Pada skenario baseline (HTTP), seluruh kredensial autentikasi yang disadap dapat diintersepsi dalam format *cleartext* melalui Wireshark. Pada skenario pasca-hardening (TLS 1.3), Wireshark hanya menangkap *Encrypted Application Data* tanpa kemampuan untuk membaca payload. Hal ini menunjukkan bahwa konfigurasi TLS 1.3 dengan AES-128-GCM efektif mencegah serangan *network sniffing* meskipun lalu lintas jaringan telah sepenuhnya berbelok (terkompromi) di layer 2.
-3. Pemetaan terhadap framework standar industri mengonfirmasi bahwa implementasi yang dilakukan memenuhi rekomendasi mitigasi M1042 (*Encrypt Sensitive Information*) dari MITRE ATT&CK untuk mengatasi teknik T1557.001, serta memenuhi seluruh panduan mitigasi OWASP untuk risiko A02:2025 (*Cryptographic Failures*) termasuk penggunaan TLS terbaru, cipher suite kuat (AEAD), header HSTS, dan penolakan koneksi HTTP.
+1. Arsitektur keamanan *Defense in Depth* berhasil diimplementasikan secara komprehensif dalam ekosistem Docker *Microservices* yang memisahkan komponen Frontend, Backend API (Flask), MySQL Database, Nginx *reverse proxy* sebagai TLS termination point, serta simulasi Client Victim (*WebTop Browser*). Konfigurasi proksi secara restriktif membatasi protokol pada TLSv1.3 saja dengan cipher suite AEAD.
+2. Efektivitas perlindungan lapis ganda divalidasi secara langsung melalui skenario penyerangan *True MITM* (ARP Spoofing) dan skenario *Post-Breach Database*. Pada *Data in Transit*, TLS 1.3 terbukti 100% efektif mengubah sadapan *cleartext* menjadi *Encrypted Application Data* yang tidak dapat dibaca oleh Wireshark. Pada *Data at Rest*, eksfiltrasi database secara langsung hanya menghasilkan Base64 ciphertext, membuktikan keberhasilan *Application-Level Encryption* AES-128-GCM.
+3. Pemetaan terhadap framework standar industri mengonfirmasi bahwa implementasi yang dilakukan memenuhi rekomendasi mitigasi M1042 (*Encrypt Sensitive Information*) dari MITRE ATT&CK untuk mengatasi teknik T1557.001. Lebih lanjut, pemenuhan panduan mitigasi OWASP untuk risiko A02:2025 (*Cryptographic Failures*) telah tercapai baik di tingkat Transportasi (TLS terbaru, HSTS, AEAD cipher) maupun di tingkat Penyimpanan Data (*Application-Level Encryption*).
 
 ### 5.2 Future Work
 
